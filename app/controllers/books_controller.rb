@@ -1,13 +1,13 @@
 class BooksController < ApplicationController
-  before_action :set_book, only: %i[ show update destroy ]
+  before_action :set_book, only: %i[ show update destroy reserve ]
 
   # GET /books
   def index
-    @books = Book.all.order(rating: :desc, publication_date: :desc)
+    @books = Book.includes(:author).order(rating: :desc, publication_date: :desc).all
     @books = @books.map do |book|
-      { id:book.id, title: book.title, author_name: book.author.name }
+      { id: book.id, title: book.title, author_name: book.author.name }
     end
-    
+
     render json: @books
   end
 
@@ -41,6 +41,16 @@ class BooksController < ApplicationController
     @book.destroy!
   end
 
+  def reserve
+    if @book.reserved_by.nil? && @book.status == "available"
+      @book.update(reserved_by: reserve_params, status: "reserved")
+
+      render json: :ok
+    else
+      render json: :not_ok, status: :unprocessable_entity
+    end
+  end
+
   # Report books
   def generate_report
     books = Book.all
@@ -50,7 +60,7 @@ class BooksController < ApplicationController
       author = book.author
       total_books = author.books.count
       highest_rated_book = author.books.order(rating: :desc).first
-      published_last_year = author.books.where('publication_date >= ?', 1.year.ago).count
+      published_last_year = author.books.where("publication_date >= ?", 1.year.ago).count
 
       report << {
         book_title: book.title,
@@ -75,5 +85,9 @@ class BooksController < ApplicationController
     # Only allow a list of trusted parameters through.
     def book_params
       params.expect(book: [ :title, :author_id, :publication_date, :rating, :status ])
+    end
+
+    def reserve_params
+      params.expect(:email)
     end
 end

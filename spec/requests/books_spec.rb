@@ -6,7 +6,7 @@ RSpec.describe "Books API", type: :request do
   describe "POST /books" do
     it "creates a book" do
       book_params = { title: "Harry Potter", author_id: author.id, publication_date: "2000-07-08" }
-      post "/books", params: { book: book_params }  
+      post "/books", params: { book: book_params }
       expect(response).to have_http_status(:created)
       expect(JSON.parse(response.body)["title"]).to eq("Harry Potter")
     end
@@ -17,7 +17,6 @@ RSpec.describe "Books API", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
       expect(JSON.parse(response.body)["publication_date"]).to include("must be in the past or today")
     end
-    
   end
 
   describe "GET /books" do
@@ -29,7 +28,7 @@ RSpec.describe "Books API", type: :request do
       expect {
           get "/books"
       }.to_not raise_error(Bullet::Notification::UnoptimizedQueryError)
-      expect(JSON.parse(response.body).map { |b| b["id"] }).to eq([book2.id, book1.id, book3.id])
+      expect(JSON.parse(response.body).map { |b| b["id"] }).to eq([ book2.id, book1.id, book3.id ])
     end
   end
 
@@ -48,6 +47,48 @@ RSpec.describe "Books API", type: :request do
 
         expect(parsed_response).to include('report')
         expect(parsed_response['report']).to be_an(Array)
+    end
+  end
+
+  context "PATCH #reserve", :focus do
+    it "reserves a book that has no previous reservation" do
+      book1 = Book.create!(title: "Book 1", author_id: author.id, publication_date: 3.days.ago, rating: 3)
+      email = 'test@email.com'
+
+      patch "/books/#{book1.id}/reserve", params: { email: email }
+      expect(response).to have_http_status(:ok)
+
+      expect(book1.reload.reserved_by).to eq(email)
+    end
+
+    it "changes the status of the book to reserved" do
+      book1 = Book.create!(title: "Book 1", author_id: author.id, publication_date: 3.days.ago, rating: 3)
+      email = 'test@email.com'
+
+      patch "/books/#{book1.id}/reserve", params: { email: email }
+      expect(response).to have_http_status(:ok)
+
+      expect(book1.reload.status).to eq('reserved')
+    end
+
+    it "returns an error if the book is not available" do
+      book1 = Book.create!(title: "Book 1", author_id: author.id, publication_date: 3.days.ago, rating: 3, status: 'checked_out')
+      email = 'test@email.com'
+
+      patch "/books/#{book1.id}/reserve", params: { email: email }
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      expect(book1.reload.reserved_by).to eq(book1.reserved_by)
+    end
+
+    it "returns an error if the book is already reserved" do
+      book1 = Book.create!(title: "Book 1", author_id: author.id, publication_date: 3.days.ago, rating: 3, reserved_by: 'someone@email.com')
+      email = 'test@email.com'
+
+      patch "/books/#{book1.id}/reserve", params: { email: email }
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      expect(book1.reload.reserved_by).to eq(book1.reserved_by)
     end
   end
 end
